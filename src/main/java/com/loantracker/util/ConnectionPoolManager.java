@@ -52,6 +52,10 @@ public class ConnectionPoolManager {
         try {
             logger.info("Initializing connection pool with HikariCP");
             
+            // Explicitly load H2 driver
+            Class.forName("org.h2.Driver");
+            logger.debug("H2 Driver loaded successfully");
+            
             HikariConfig config = new HikariConfig();
             config.setJdbcUrl(AppConfig.DB_URL);
             config.setUsername(AppConfig.DB_USER);
@@ -66,6 +70,13 @@ public class ConnectionPoolManager {
 
             dataSource = new HikariDataSource(config);
             logger.info("Connection pool initialized successfully with {} max connections", AppConfig.DB_POOL_SIZE);
+        } catch (ClassNotFoundException e) {
+            logger.error("H2 driver not found in classpath", e);
+            throw new LoanTrackerException(
+                ErrorCode.DB_CONNECTION_FAILED,
+                "H2 JDBC driver not found in classpath",
+                e
+            );
         } catch (Exception e) {
             logger.error("Failed to initialize connection pool", e);
             throw new LoanTrackerException(

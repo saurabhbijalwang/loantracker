@@ -59,6 +59,9 @@ public class LoanRepository {
             stmt.setInt(4, loan.getLoanTermMonths());
             stmt.setDate(5, Date.valueOf(loan.getStartDate()));
 
+            logger.debug("Executing INSERT: borrower={}, principal={}, rate={}, term={}",
+                loan.getBorrowerName(), loan.getPrincipalAmount(), loan.getInterestRate(), loan.getLoanTermMonths());
+
             int affectedRows = stmt.executeUpdate();
             if (affectedRows == 0) {
                 throw new SQLException("Creating loan failed, no rows affected");
@@ -74,10 +77,11 @@ public class LoanRepository {
                 }
             }
         } catch (SQLException e) {
-            logger.error("Failed to create loan for borrower: {}", loan.getBorrowerName(), e);
+            logger.error("Failed to create loan for borrower: {} - SQL Error: {}", 
+                loan.getBorrowerName(), e.getMessage(), e);
             throw new LoanTrackerException(
                 ErrorCode.DB_OPERATION_FAILED,
-                "Failed to create loan in database",
+                "Failed to create loan in database: " + e.getMessage(),
                 e
             );
         }
@@ -126,16 +130,17 @@ public class LoanRepository {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(SELECT_ALL)) {
 
+            logger.debug("Executing SELECT ALL loans");
             while (rs.next()) {
                 loans.add(mapResultSetToLoan(rs));
             }
             logger.debug("Retrieved {} loans from database", loans.size());
             return loans;
         } catch (SQLException e) {
-            logger.error("Failed to retrieve all loans", e);
+            logger.error("Failed to retrieve all loans - SQL Error: {}", e.getMessage(), e);
             throw new LoanTrackerException(
                 ErrorCode.DB_OPERATION_FAILED,
-                "Failed to retrieve loans from database",
+                "Failed to retrieve loans from database: " + e.getMessage(),
                 e
             );
         }
@@ -216,17 +221,21 @@ public class LoanRepository {
              PreparedStatement stmt = conn.prepareStatement(COUNT_BY_STATUS)) {
 
             stmt.setString(1, status);
+            logger.debug("Executing COUNT by status: {}", status);
+            
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    return rs.getInt(1);
+                    int count = rs.getInt(1);
+                    logger.debug("Count of loans with status '{}': {}", status, count);
+                    return count;
                 }
             }
             return 0;
         } catch (SQLException e) {
-            logger.error("Failed to count loans by status: {}", status, e);
+            logger.error("Failed to count loans by status '{}' - SQL Error: {}", status, e.getMessage(), e);
             throw new LoanTrackerException(
                 ErrorCode.DB_OPERATION_FAILED,
-                "Failed to count loans",
+                "Failed to count loans: " + e.getMessage(),
                 e
             );
         }

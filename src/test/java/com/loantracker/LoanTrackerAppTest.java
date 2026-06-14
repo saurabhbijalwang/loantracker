@@ -4,11 +4,16 @@ import com.loantracker.dto.CreateLoanRequest;
 import com.loantracker.exception.ErrorCode;
 import com.loantracker.exception.LoanTrackerException;
 import com.loantracker.service.LoanService;
+import com.loantracker.util.ConnectionPoolManager;
 import com.loantracker.util.ValidationUtils;
+import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.LocalDate;
 
 import static org.junit.Assert.*;
@@ -20,9 +25,74 @@ import static org.junit.Assert.*;
 public class LoanTrackerAppTest {
     private LoanService loanService;
 
+    @BeforeClass
+    public static void setUpClass() throws Exception {
+        // Initialize test database schema once for all tests
+        try (Connection conn = ConnectionPoolManager.getConnection();
+             Statement stmt = conn.createStatement()) {
+
+            // Drop existing tables if they exist (fresh state for tests)
+            String[] dropStatements = {
+                "DROP TABLE IF EXISTS payments",
+                "DROP TABLE IF EXISTS loans"
+            };
+
+            for (String sql : dropStatements) {
+                try {
+                    stmt.execute(sql);
+                } catch (Exception e) {
+                    // Tables might not exist, that's ok
+                }
+            }
+
+            // Create tables for testing
+            String[] createStatements = {
+                "CREATE TABLE IF NOT EXISTS loans (" +
+                "  id INT AUTO_INCREMENT PRIMARY KEY," +
+                "  borrower_name VARCHAR(255) NOT NULL," +
+                "  principal_amount DECIMAL(10, 2) NOT NULL," +
+                "  interest_rate DECIMAL(5, 2) NOT NULL," +
+                "  loan_term_months INT NOT NULL," +
+                "  start_date DATE NOT NULL," +
+                "  status VARCHAR(50) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CLOSED', 'DEFAULTED'))," +
+                "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  INDEX idx_status (status)," +
+                "  INDEX idx_borrower (borrower_name)" +
+                ")",
+                "CREATE TABLE IF NOT EXISTS payments (" +
+                "  id INT AUTO_INCREMENT PRIMARY KEY," +
+                "  loan_id INT NOT NULL," +
+                "  payment_amount DECIMAL(10, 2) NOT NULL," +
+                "  payment_date DATE NOT NULL," +
+                "  notes VARCHAR(500)," +
+                "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                "  FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE," +
+                "  INDEX idx_loan_id (loan_id)," +
+                "  INDEX idx_payment_date (payment_date)" +
+                ")"
+            };
+
+            for (String sql : createStatements) {
+                stmt.execute(sql);
+            }
+        }
+    }
+
     @Before
-    public void setUp() {
+    public void setUp() throws Exception {
         loanService = new LoanService();
+        
+        // Clean loans table before each test (but keep schema)
+        try (Connection conn = ConnectionPoolManager.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("DELETE FROM payments");
+            stmt.execute("DELETE FROM loans");
+        }
+    }
+
+    @After
+    public void tearDown() {
+        // Cleanup after each test if needed
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -232,6 +302,7 @@ public class LoanTrackerAppTest {
         );
         
         String result = exception.toString();
-        assertTrue("Exception string should contain error code", result.contains("DB_003"));
+        assertTrue("Exception string should contain error code", result.contains("BIZ_001"));
+        assertTrue("Exception string should contain message", result.contains("not found"));
     }
 }
